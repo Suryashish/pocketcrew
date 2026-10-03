@@ -158,20 +158,16 @@ def tidy_draft(data: dict, description: str) -> dict:
     return {"name": name, "emoji": emoji, "role": role, "instructions": clean(instructions)}
 
 
-def draft_agent(description: str) -> dict:
-    """Turn one sentence into a full agent definition. Raises llm.LLMError."""
-    description = clean(description).strip()[:600]
-    prompt = (
-        "Design an AI agent from the description below. Respond with ONLY a JSON object, "
-        "no code fences, with exactly these keys:\n"
-        '- "name": a short memorable name, 1-2 words, letters only\n'
-        '- "emoji": one emoji that fits\n'
-        '- "role": one line (max 12 words) saying what the agent is for\n'
-        '- "instructions": 4-7 sentences addressed to the agent as "You", covering its '
-        "expertise, tone, how it should answer and what it should avoid\n\n"
-        f"Description: {description}"
-    )
-    raw = llm.chat("", [{"role": "user", "content": prompt}], max_tokens=500, temperature=0.6)
+_DRAFT_FORMAT = (
+    "Respond with ONLY a JSON object, no code fences, with exactly these keys:\n"
+    '- "name": a short memorable name, 1-2 words, letters only\n'
+    '- "emoji": one emoji that fits\n'
+    '- "role": one line (max 12 words) saying what the agent is for\n'
+)
+
+
+def _draft(prompt: str, description: str, max_tokens: int = 500) -> dict:
+    raw = llm.chat("", [{"role": "user", "content": prompt}], max_tokens=max_tokens, temperature=0.6)
     data: dict = {}
     start, end = raw.find("{"), raw.rfind("}")
     if start != -1 and end > start:
@@ -182,6 +178,39 @@ def draft_agent(description: str) -> dict:
         except ValueError:
             log.info("Draft was not valid JSON; using fallbacks")
     return tidy_draft(data, description)
+
+
+def draft_agent(description: str) -> dict:
+    """Turn one sentence into a full agent definition. Raises llm.LLMError."""
+    description = clean(description).strip()[:600]
+    prompt = (
+        f"Design an AI agent from the description below. {_DRAFT_FORMAT}"
+        '- "instructions": 4-7 sentences addressed to the agent as "You", covering its '
+        "expertise, tone, how it should answer and what it should avoid\n\n"
+        f"Description: {description}"
+    )
+    return _draft(prompt, description)
+
+
+def draft_from_interview(answers: list[tuple[str, str]]) -> dict:
+    """Build an agent from a spoken interview (question, answer pairs). Raises llm.LLMError.
+
+    The answers come from speech recognition, so the model is told to expect
+    mishearings and to ignore non-answers such as "skip".
+    """
+    pairs = [(clean(q).strip()[:200], clean(a).strip()[:1000]) for q, a in answers]
+    transcript = "\n".join(f"Q: {q}\nA: {a or '(no answer)'}" for q, a in pairs)
+    prompt = (
+        "Design an AI agent from this short interview with its future user. The answers were "
+        "transcribed from speech, so fix obvious mishearings and ignore non-answers such as "
+        f'"skip", "no" or "nothing". {_DRAFT_FORMAT}'
+        "  If the user asked for a specific name, use exactly that name.\n"
+        '- "instructions": 5-8 sentences addressed to the agent as "You". Cover its purpose, '
+        "the tone the user asked for, and every rule they gave about what it must always or "
+        "never do. Do not invent requirements the user did not mention.\n\n"
+        f"Interview:\n{transcript}"
+    )
+    return _draft(prompt, pairs[0][1], max_tokens=600)
 
 
 def unique_name(agents: list[Agent], name: str) -> str:

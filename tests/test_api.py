@@ -101,3 +101,28 @@ def test_telegram_not_configured(client, user):
 def test_static_dashboard_served(client):
     assert "PocketCrew" in client.get("/").text
     assert client.get("/app.js").status_code == 200
+
+
+def test_voice_interview_builds_and_saves_an_agent(client, user, gemma):
+    gemma.answers = ['{"name": "Sidekick", "emoji": "🧘", "role": "Calm meditation guide", "instructions": "You are a calm meditation guide. You speak slowly and never rush the user."}']
+    answers = [
+        {"question": "What should this agent help you with?", "answer": "guide me through meditation"},
+        {"question": "How should it talk to you?", "answer": "calm and slow"},
+        {"question": "Anything it should always or never do?", "answer": "never rush me"},
+        {"question": "Do you want to give it a name?", "answer": "skip"},
+    ]
+    r = client.post("/api/agents/interview", json={"answers": answers})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Sidekick 2"  # clashes with the starter agent, so made unique
+    prompt = gemma.calls[0]["messages"][0]["content"]
+    assert "never rush me" in prompt and "calm and slow" in prompt
+    assert [a["name"] for a in client.get("/api/agents").json()] == ["Sidekick", "Sidekick 2"]
+
+
+def test_voice_interview_needs_a_real_first_answer_and_reports_model_failure(client, user, gemma):
+    empty = client.post("/api/agents/interview", json={"answers": [{"question": "q", "answer": " "}]})
+    assert empty.status_code == 422 and isinstance(empty.json()["detail"], str)
+    gemma.error = "Gemma is rate-limited right now."
+    failed = client.post("/api/agents/interview", json={"answers": [{"question": "q", "answer": "a tutor"}]})
+    assert failed.status_code == 503
+    assert len(client.get("/api/agents").json()) == 1  # nothing half-created

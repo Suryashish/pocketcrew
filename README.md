@@ -11,6 +11,8 @@ No bot to create per user, no webhooks, no prompt engineering.
   each message and hands it to the agent whose role fits best. `@Name` talks to one directly.
 - **Hire in a sentence.** Type `a strict Spanish tutor` on the web or `/hire a strict Spanish tutor`
   in Telegram, and Gemma writes the name, role and instructions.
+- **Build by voice.** In the dashboard the app asks four questions out loud, you answer by speaking,
+  and Gemma builds and saves the agent. Speech uses the browser's own engine, so Gemma stays the only model.
 - **Teach by sending files.** Send a `.txt`, `.md` or `.pdf` to the bot and the agent answers from it.
 - **One shared memory.** `/remember I'm vegetarian` once, and every agent knows.
 - **One-tap Telegram linking.** A deep link or QR code. Users never touch BotFather.

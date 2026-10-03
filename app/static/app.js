@@ -63,6 +63,49 @@ function showError(id, message) {
   node.hidden = !message;
 }
 
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const EASE = "cubic-bezier(.2, .7, .2, 1)";
+const swaps = new WeakMap();
+
+/** Change a node's text with a short cross-fade instead of an instant swap. */
+async function swapText(node, text) {
+  if (node.textContent === text && !swaps.has(node)) return;
+  const ticket = (swaps.get(node) || 0) + 1;
+  swaps.set(node, ticket);
+  if (still || !node.animate || !node.textContent) {
+    node.textContent = text;
+  } else {
+    const out = node.animate({ opacity: [1, 0], transform: ["none", "translateY(-5px)"] }, { duration: 170, easing: "ease-in", fill: "forwards" });
+    await out.finished.catch(() => {});
+    out.cancel();
+    if (swaps.get(node) !== ticket) return;  // a newer change took over
+    node.textContent = text;
+  }
+  if (!still && node.animate) node.animate({ opacity: [0, 1], transform: ["translateY(7px)", "none"] }, { duration: 380, easing: EASE });
+  if (swaps.get(node) === ticket) swaps.delete(node);
+}
+
+/** Run `change` (which alters the dialog's content) and glide the dialog to its new height. */
+function morphDialog(change) {
+  const dialog = $("agent-dialog");
+  const before = dialog.open ? dialog.getBoundingClientRect().height : 0;
+  change();
+  if (still || !before || !dialog.animate) return;
+  const after = dialog.getBoundingClientRect().height;
+  if (Math.abs(after - before) < 2) return;
+  dialog.style.overflow = "hidden";  // no scrollbar flash while it resizes
+  const glide = dialog.animate({ height: [`${before}px`, `${after}px`] }, { duration: 420, easing: EASE });
+  glide.finished.catch(() => {}).then(() => { dialog.style.overflow = ""; });
+}
+
+const seen = { agents: new Set(), memory: new Set(), docs: new Set() };
+/** True the first time an id is drawn, so only new items play their entrance animation. */
+function fresh(kind, id) {
+  if (seen[kind].has(id)) return false;
+  seen[kind].add(id);
+  return true;
+}
+
 async function busy(button, work) {
   const label = button.textContent;
   button.disabled = true;
@@ -148,7 +191,7 @@ async function loadAgents() {
   box.replaceChildren();
   if (!agents.length) box.append(el("p", { class: "muted" }, "No agents yet. Hire your first one."));
   for (const [i, agent] of agents.entries()) {
-    box.append(el("button", { class: "agent", style: `--i:${i}`, onclick: () => openDialog(agent) },
+    box.append(el("button", { class: fresh("agents", agent.id) ? "agent new" : "agent", style: `--i:${i}`, onclick: () => openDialog(agent) },
       el("span", { class: "emoji" }, agent.emoji),
       el("span", { class: "name" }, agent.name),
       el("span", { class: "role" }, agent.role || "No role set")));
@@ -164,12 +207,15 @@ function fillForm(data) {
 
 function showTab(name) {
   for (const button of $("tabs").children) button.classList.toggle("active", button.dataset.tab === name);
-  for (const panel of document.querySelectorAll("[data-panel]")) panel.hidden = panel.dataset.panel !== name;
+  morphDialog(() => {
+    for (const panel of document.querySelectorAll("[data-panel]")) panel.hidden = panel.dataset.panel !== name;
+  });
   if (name === "knowledge") loadDocs();
   if (name === "chat") loadChat();
 }
 
 function openDialog(agent) {
+  stopVoice();
   editing = agent || null;
   $("dialog-title").textContent = agent ? `${agent.emoji} ${agent.name}` : "Hire an agent";
   $("agent-save").textContent = agent ? "Save" : "Hire";
@@ -231,6 +277,226 @@ $("agent-delete").addEventListener("click", async () => {
   } catch (err) { showError("agent-error", err.message); }
 });
 
+// --- voice interview ---------------------------------------------------------
+// Each question is read aloud, a 4-second countdown runs, then the microphone
+// records until 3 seconds of silence. Nothing advances until the user presses
+// Next, so they can re-record or edit the transcript first. Gemma only sees the
+// finished answers. Typing always works as a fallback.
+
+const VOICE_QUESTIONS = [
+  "What should this agent help you with?",
+  "How should it talk to you? For example friendly, strict, or straight to the point.",
+  "Is there anything it should always do, or never do?",
+  "Last one. Do you want to give it a name?",
+];
+const COUNTDOWN_SECONDS = 4;
+const SILENCE_MS = 3000;
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const voice = { run: 0, take: 0, step: 0, answers: [], rec: null, typedOnly: !SpeechRec, phase: "idle" };
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const NO_MIC = "I can't use the microphone here. Type your answer, then press Next.";
+
+function voiceButtons() {
+  const busy = ["thinking", "done"].includes(voice.phase);
+  const last = voice.step >= VOICE_QUESTIONS.length - 1;
+  $("voice-answer").disabled = busy;
+  $("voice-next").disabled = busy || (voice.phase !== "failed" && !$("voice-answer").value.trim());
+  $("voice-next").textContent = voice.phase === "failed" ? "Try again" : last ? "Build agent" : "Next";
+  $("voice-skip").classList.toggle("gone", busy || voice.phase === "failed" || voice.step === 0);
+}
+
+function voicePhase(phase, caption) {
+  voice.phase = phase;
+  $("voice-orb").dataset.state = phase;
+  if (phase !== "countdown") swapText($("voice-icon"), { speaking: "🔊", thinking: "✨", done: "✓" }[phase] || "🎙");
+  if (caption !== undefined) swapText($("voice-caption"), caption);
+  voiceButtons();
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window)) return Promise.resolve();
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; clearTimeout(guard); resolve(); } };
+    // Some browsers never fire `end` (no voices installed, tab in background), so never wait forever.
+    const guard = setTimeout(finish, 2500 + text.length * 90);
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.03;
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+    } catch { finish(); }
+  });
+}
+
+/** Stop speaking, counting down and recording, without triggering any follow-up step. */
+function haltCapture() {
+  voice.take += 1;
+  const rec = voice.rec;
+  voice.rec = null;
+  if (rec) { rec.onend = null; try { rec.abort(); } catch { /* already stopped */ } }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  $("voice-ring").classList.remove("run");
+}
+
+function stopVoice() {
+  voice.run += 1;  // cancels any in-flight question or build from the previous run
+  haltCapture();
+}
+
+async function startCountdown() {
+  haltCapture();
+  const take = voice.take;
+  voicePhase("countdown", "Get ready. Recording starts when the ring completes.");
+  const ring = $("voice-ring");
+  void ring.getBoundingClientRect();  // restart the ring animation from full
+  ring.classList.add("run");
+  for (let left = COUNTDOWN_SECONDS; left > 0; left--) {
+    swapText($("voice-icon"), String(left));
+    await pause(1000);
+    if (take !== voice.take) return;
+  }
+  startListening();
+}
+
+function startListening() {
+  const take = voice.take;
+  const rec = new SpeechRec();
+  voice.rec = rec;
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = true;
+  rec.continuous = true;
+  let finalText = "";
+  let quiet = null;
+  const settle = () => { clearTimeout(quiet); quiet = setTimeout(() => { try { rec.stop(); } catch { /* ended */ } }, SILENCE_MS); };
+  rec.onstart = () => {
+    $("voice-answer").value = "";
+    voicePhase("listening", "Recording. I'll stop after 3 seconds of silence, or tap the orb.");
+    settle();
+  };
+  rec.onresult = (event) => {
+    let interim = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const piece = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finalText += `${piece} `; else interim += piece;
+    }
+    $("voice-answer").value = (finalText + interim).trim();
+    voiceButtons();
+    settle();
+  };
+  rec.onerror = (event) => {
+    if (["not-allowed", "service-not-allowed", "audio-capture", "network"].includes(event.error)) voice.typedOnly = true;
+  };
+  rec.onend = () => {
+    clearTimeout(quiet);
+    if (voice.rec !== rec || take !== voice.take) return;
+    voice.rec = null;
+    const last = voice.step >= VOICE_QUESTIONS.length - 1;
+    if ($("voice-answer").value.trim()) {
+      voicePhase("review", `Edit it if I misheard, or tap the orb to record again. Press ${last ? "Build agent" : "Next"} when you're happy.`);
+    } else if (voice.typedOnly) {
+      voicePhase("idle", NO_MIC);
+    } else {
+      voicePhase("idle", "I didn't hear anything. Tap the orb to try again, or type your answer.");
+    }
+  };
+  try { rec.start(); } catch { voice.typedOnly = true; voice.rec = null; voicePhase("idle", NO_MIC); }
+}
+
+async function askQuestion() {
+  const run = voice.run;
+  [...$("voice-dots").children].forEach((dot, i) => {
+    dot.className = i < voice.step ? "done" : i === voice.step ? "now" : "";
+  });
+  $("voice-answer").value = "";
+  swapText($("voice-question"), VOICE_QUESTIONS[voice.step]);
+  voicePhase("speaking", "");
+  const take = voice.take;
+  await speak(VOICE_QUESTIONS[voice.step]);
+  if (run !== voice.run || take !== voice.take) return;
+  if (voice.typedOnly) {
+    voicePhase("idle", SpeechRec ? NO_MIC : "This browser can't listen. Type your answer, then press Next.");
+    $("voice-answer").focus();
+  } else {
+    startCountdown();
+  }
+}
+
+function commitAnswer(text) {
+  haltCapture();
+  voice.answers.push({ question: VOICE_QUESTIONS[voice.step], answer: text.slice(0, 1000) });
+  if (voice.step + 1 < VOICE_QUESTIONS.length) {
+    voice.step += 1;
+    askQuestion();
+  } else {
+    buildFromVoice();
+  }
+}
+
+async function buildFromVoice() {
+  const run = voice.run;
+  [...$("voice-dots").children].forEach((dot) => { dot.className = "done"; });
+  swapText($("voice-question"), "Building your agent…");
+  voicePhase("thinking", "Gemma is writing its name, role and instructions.");
+  let saved;
+  try {
+    saved = await api("POST", "/api/agents/interview", { answers: voice.answers });
+  } catch (err) {
+    if (run !== voice.run) return;
+    swapText($("voice-question"), "That didn't work.");
+    voicePhase("failed", err.message);
+    return;
+  }
+  await loadAgents().catch(() => {});
+  if (run !== voice.run) return;
+  swapText($("voice-question"), `Meet ${saved.emoji} ${saved.name}`);
+  voicePhase("done", saved.role);
+  await speak(`Meet ${saved.name}. ${saved.role.replace(/[.!?\s]+$/, "")}. It's in your crew now.`);
+  if (run !== voice.run) return;
+  openDialog(saved);
+  showTab("chat");
+}
+
+function startVoice() {
+  stopVoice();
+  voice.step = 0;
+  voice.answers = [];
+  voice.typedOnly = !SpeechRec;
+  $("voice-dots").replaceChildren(...VOICE_QUESTIONS.map(() => el("i")));
+  $("voice-question").textContent = "";
+  $("voice-caption").textContent = "";
+  $("dialog-title").textContent = "Build by voice";
+  showTab("voice");
+  askQuestion();
+}
+
+$("voice-start").addEventListener("click", startVoice);
+$("voice-cancel").addEventListener("click", () => openDialog(null));
+$("voice-skip").addEventListener("click", () => commitAnswer("skip"));
+$("voice-next").addEventListener("click", () => {
+  if (voice.phase === "failed") return buildFromVoice();
+  const text = $("voice-answer").value.trim();
+  if (text) commitAnswer(text);
+});
+$("voice-orb").addEventListener("click", () => {
+  if (["thinking", "done", "failed"].includes(voice.phase)) return;
+  if (voice.phase === "listening" && voice.rec) { try { voice.rec.stop(); } catch { /* ended */ } return; }
+  if (voice.phase === "countdown") { haltCapture(); voicePhase("idle", "Paused. Tap the orb to record, or type your answer."); return; }
+  if (voice.typedOnly) { haltCapture(); voicePhase("idle", NO_MIC); $("voice-answer").focus(); return; }
+  startCountdown();  // from speaking, idle or review: (re)record this answer
+});
+$("voice-answer").addEventListener("input", () => {
+  // Typing takes over from the microphone so the transcript never overwrites the user's edits.
+  if (["speaking", "countdown", "listening"].includes(voice.phase)) {
+    haltCapture();
+    voicePhase("review", "Press Next when you're happy, or tap the orb to record instead.");
+  }
+  voiceButtons();
+});
+$("agent-dialog").addEventListener("close", stopVoice);
+
 // --- knowledge -------------------------------------------------------------
 
 async function loadDocs() {
@@ -240,7 +506,7 @@ async function loadDocs() {
   list.replaceChildren();
   if (!docs.length) list.append(el("li", { class: "muted" }, "Nothing here yet."));
   for (const doc of docs) {
-    list.append(el("li", {},
+    list.append(el("li", { class: fresh("docs", doc.id) ? "new" : "" },
       el("span", {}, `${doc.title} · ${doc.chars.toLocaleString()} chars`),
       el("button", { title: "Remove", "aria-label": `Remove ${doc.title}`, onclick: async () => {
         await api("DELETE", `/api/docs/${doc.id}`).catch((err) => showError("doc-error", err.message));
@@ -340,7 +606,7 @@ async function loadMemory() {
   const list = $("memory-list");
   list.replaceChildren();
   for (const item of items) {
-    list.append(el("li", {},
+    list.append(el("li", { class: fresh("memory", item.id) ? "new" : "" },
       el("span", {}, item.text),
       el("button", { title: "Forget", "aria-label": "Forget this", onclick: async () => {
         await api("DELETE", `/api/memory/${item.id}`).catch(() => {});

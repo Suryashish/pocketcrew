@@ -136,6 +136,15 @@ class DraftIn(BaseModel):
     description: str = Field(min_length=4, max_length=600)
 
 
+class InterviewTurn(BaseModel):
+    question: str = Field(max_length=200)
+    answer: str = Field(max_length=1000)
+
+
+class InterviewIn(BaseModel):
+    answers: list[InterviewTurn] = Field(min_length=1, max_length=6)
+
+
 class DocIn(BaseModel):
     title: str = Field(default="", max_length=160)
     text: str = Field(min_length=1, max_length=400_000)
@@ -250,6 +259,26 @@ def draft_agent(body: DraftIn, user: User = Depends(current_user), db: Session =
         raise HTTPException(503, str(e))
     draft["name"] = brain.unique_name(existing, draft["name"])
     return draft
+
+
+@app.post("/api/agents/interview")
+def interview_agent(body: InterviewIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Build and save an agent from the answers given in the voice interview."""
+    if len(clean(body.answers[0].answer).strip()) < 3:
+        raise HTTPException(422, "Tell me what the agent should help with first.")
+    existing = brain.agents_of(db, user.id)
+    if len(existing) >= settings.max_agents:
+        raise HTTPException(409, f"Your crew is full ({settings.max_agents} agents).")
+    db.commit()
+    try:
+        draft = brain.draft_from_interview([(t.question, t.answer) for t in body.answers])
+    except llm.LLMError as e:
+        raise HTTPException(503, str(e))
+    draft["name"] = brain.unique_name(existing, draft["name"])
+    agent = Agent(user_id=user.id, **draft)
+    db.add(agent)
+    db.commit()
+    return agent_json(agent)
 
 
 @app.patch("/api/agents/{agent_id}")
