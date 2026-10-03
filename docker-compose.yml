@@ -20,6 +20,8 @@ x-app: &app
     ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-true}
     MAX_AGENTS_PER_USER: ${MAX_AGENTS_PER_USER:-12}
     TOOLS_ENABLED: ${TOOLS_ENABLED:-true}
+    FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+    FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-}
     MAX_TOOL_STEPS: ${MAX_TOOL_STEPS:-}
     SANDBOX_URL: http://sandbox:7000
   # `sandbox` is the only network the sandbox container is on; the database is not on it.

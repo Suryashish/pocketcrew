@@ -17,7 +17,7 @@ from .db import Sandbox, SessionLocal
 
 log = logging.getLogger("pocketcrew.sandbox")
 
-OUTPUT_LIMIT = 3500    # characters of command output handed back to the model
+OUTPUT_LIMIT = 3500    # characters of shell output handed back to the model
 PORT_BASE = 20000      # agent N serves its preview on PORT_BASE + N
 
 _http = httpx.Client(timeout=httpx.Timeout(330, connect=3))
@@ -94,13 +94,13 @@ def _clip(text: str, limit: int = OUTPUT_LIMIT) -> str:
     return f"{text[:half]}\n… [{len(text) - limit} characters omitted] …\n{text[-half:]}"
 
 
-def run(agent_id: int, command: str, timeout: int = 120) -> tuple[int, str]:
-    """Run a shell command in the agent's workspace. Returns (exit code, output)."""
+def run(agent_id: int, command: str, timeout: int = 120, limit: int = OUTPUT_LIMIT) -> tuple[int, str]:
+    """Run a shell command in the agent's workspace. Returns (exit code, output clipped to `limit`)."""
     data = _call("run", agent_id, command=command, timeout=timeout)
     text = data["output"].replace("\x00", "").strip()
     if data.get("timed_out"):
         text += f"\n[stopped after {timeout}s. For servers or anything long-running use the serve tool.]"
-    return data["code"], _clip(text.strip())
+    return data["code"], _clip(text.strip(), limit)
 
 
 def write_file(agent_id: int, path: str, content: str) -> str:

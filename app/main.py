@@ -19,7 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import brain, knowledge, llm, sandbox, security
+from . import brain, firecrawl, knowledge, llm, sandbox, security
 from .config import settings
 from .db import Agent, Doc, Chunk, LinkToken, Memory, Message, Sandbox, TelegramLink, User, clean, get_db, init_db, now
 from .telegram import Telegram, TelegramError
@@ -177,6 +177,7 @@ def status():
         "llm": llm.status(),
         "telegram": {"configured": bool(settings.telegram_token), "bot": bot_username()},
         "sandbox": {"available": sandbox.available()},
+        "firecrawl": {"configured": firecrawl.configured()},
         "signups": settings.allow_signups,
     }
 

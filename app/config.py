@@ -40,6 +40,9 @@ class Settings:
         self.tools_enabled = _env("TOOLS_ENABLED", "true").lower() not in ("0", "false", "no")
         self.sandbox_url = (_env("SANDBOX_URL") or "http://sandbox:7000").rstrip("/")
         self.max_tool_steps = _int("MAX_TOOL_STEPS", 8)
+        # Optional: Firecrawl for scraping, search and crawling (self-hosted URLs work too).
+        self.firecrawl_api_key = _env("FIRECRAWL_API_KEY")
+        self.firecrawl_api_url = (_env("FIRECRAWL_API_URL") or "https://api.firecrawl.dev").rstrip("/")
 
         self.max_agents = _int("MAX_AGENTS_PER_USER", 12)
         self.max_doc_bytes = _int("MAX_DOC_BYTES", 2_000_000)

@@ -1,6 +1,6 @@
 import pytest
 
-from app import brain, sandbox, tools
+from app import brain, firecrawl, sandbox, tools
 from app.config import settings
 
 
@@ -89,3 +89,58 @@ def test_tools_degrade_politely_without_a_sandbox(monkeypatch):
 
 def test_preview_requires_a_valid_token(client):
     assert client.get("/preview/not-a-token/index.html").status_code == 404
+
+
+@pytest.fixture
+def fire(monkeypatch):
+    """Firecrawl switched on, answering from a script instead of the network."""
+    sent = []
+    replies = {
+        ("POST", "/scrape"): {"success": True, "data": {"markdown": "# Pricing\nPro is $20.", "metadata": {"title": "Pricing", "sourceURL": "https://acme.test/pricing"}}},
+        ("POST", "/search"): {"success": True, "data": {"web": [{"title": "Acme", "url": "https://acme.test", "description": "Rockets."}]}},
+        ("POST", "/crawl"): {"success": True, "id": "job-1", "url": "https://api/v2/crawl/job-1"},
+        ("GET", "/crawl/job-1"): {"success": True, "status": "completed", "data": [
+            {"markdown": "Home page", "metadata": {"title": "Home", "sourceURL": "https://acme.test/"}},
+            {"markdown": "About us " * 400, "metadata": {"title": "About", "sourceURL": "https://acme.test/about"}},
+        ]},
+    }
+
+    def fake(method, path, body=None):
+        sent.append((method, path, body))
+        return replies[(method, path)]
+
+    monkeypatch.setattr(settings, "firecrawl_api_key", "fc-test")
+    monkeypatch.setattr(firecrawl, "_request", fake)
+    monkeypatch.setattr(firecrawl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(sandbox, "available", lambda: False)  # prove Firecrawl alone is enough to read the web
+    return sent
+
+
+def test_firecrawl_powers_search_reading_and_crawling(fire):
+    assert tools.execute(1, tools.Call("web_search", {}, "acme rockets")) == "Acme\nhttps://acme.test\nRockets."
+    page = tools.execute(1, tools.Call("fetch_url", {}, "https://acme.test/pricing"))
+    assert page.startswith("# Pricing\nhttps://acme.test/pricing") and "Pro is $20." in page
+    crawl = tools.execute(1, tools.Call("crawl_site", {"limit": "2"}, "https://acme.test"))
+    assert "## Home\nhttps://acme.test/" in crawl and "## About" in crawl and crawl.endswith("[2 page(s) crawled]")
+    assert len(crawl) < 2 * tools.CRAWL_PAGE_CHARS + 400  # long pages are clipped
+    assert fire[0] == ("POST", "/search", {"query": "acme rockets", "limit": 5})
+    assert fire[1] == ("POST", "/scrape", {"url": "https://acme.test/pricing", "formats": ["markdown"], "onlyMainContent": True})
+    assert fire[2][2]["limit"] == 2 and fire[3] == ("GET", "/crawl/job-1", None)
+    assert "crawl_site" in tools.instructions(False) and "fetch_url" in tools.instructions(False)
+
+
+def test_firecrawl_failures_fall_back_or_explain(fire, monkeypatch):
+    def broken(method, path, body=None):
+        raise firecrawl.FirecrawlError("The Firecrawl account is out of credits.")
+
+    monkeypatch.setattr(firecrawl, "_request", broken)
+    assert "out of credits" in tools.execute(1, tools.Call("fetch_url", {}, "https://acme.test"))
+    assert "out of credits" in tools.execute(1, tools.Call("crawl_site", {}, "https://acme.test"))
+    assert "full http(s) URL" in tools.execute(1, tools.Call("crawl_site", {}, "acme.test"))
+    # with a sandbox, the built-in reader and crawler take over instead
+    ran = []
+    monkeypatch.setattr(sandbox, "available", lambda: True)
+    monkeypatch.setattr(sandbox, "run", lambda agent, command, timeout, limit=0: (ran.append(command), (0, "fallback text"))[1])
+    assert tools.execute(1, tools.Call("fetch_url", {}, "https://acme.test")) == "fallback text"
+    assert tools.execute(1, tools.Call("crawl_site", {"limit": "99"}, "https://acme.test")) == "fallback text"
+    assert f"https://acme.test {tools.MAX_CRAWL_PAGES} " in ran[1]  # the page limit is capped

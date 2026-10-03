@@ -51,18 +51,25 @@ The bot uses long polling, so this works from a laptop with no public URL.
 
 ## Agent tools and the sandbox
 
-Agents with "Give it a computer and the internet" switched on (the default) can use five tools:
+Agents with "Give it a computer and the internet" switched on (the default) can use six tools:
 
 | Tool | What it does |
 | --- | --- |
-| `web_search` | Search the web (DuckDuckGo, no API key) |
-| `fetch_url` | Read a web page as text |
+| `web_search` | Search the web |
+| `fetch_url` | Read one web page as text |
+| `crawl_site` | Read several pages of one site by following its links (up to 10) |
 | `shell` | Run a bash command (Debian, Python 3, Node.js, git, curl; no root; 120 s per command) |
 | `write_file` | Create or overwrite a file in the agent's workspace |
 | `serve` | Start a web server and return a public link, `PUBLIC_URL/p/<token>/` |
 
 Ask an agent to *"build a landing page for my cafe and send me the link"* and it writes the files,
 starts a server and replies with a link you can open. In Telegram you see each step as it happens.
+
+**Firecrawl (optional).** Add `FIRECRAWL_API_KEY` to `.env` and the three web tools go through
+[Firecrawl](https://firecrawl.dev): pages are rendered with JavaScript and come back as clean Markdown,
+which works on sites the built-in reader cannot handle. Without a key, or if a Firecrawl call fails,
+agents fall back to a built-in page reader, DuckDuckGo search and a basic same-site crawler, so the
+tools always work. A self-hosted Firecrawl works too via `FIRECRAWL_API_URL`.
 
 How it is built, and what that means for safety:
 
@@ -100,6 +107,8 @@ Everything lives in `.env` (see [.env.example](.env.example)).
 | `TOOLS_ENABLED` | `true` | Web search and the sandbox for agents |
 | `SANDBOX_MEMORY`, `SANDBOX_CPUS` | `2g`, `2` | Limits for the shared sandbox container |
 | `MAX_TOOL_STEPS` | `8` | Tool rounds an agent may take per message |
+| `FIRECRAWL_API_KEY` | | Optional. Use Firecrawl for search, page reading and crawling |
+| `FIRECRAWL_API_URL` | `https://api.firecrawl.dev` | Point at a self-hosted Firecrawl |
 
 ### Running Gemma locally instead
 
@@ -138,7 +147,7 @@ Backend (`app/`)
 - `bot.py`: Telegram worker (commands, linking, file learning)
 - `brain.py`: prompt assembly, dispatcher, agent drafting
 - `knowledge.py`: chunking and BM25 retrieval (no embeddings, no extra model)
-- `tools.py`, `sandbox.py`: the tool protocol and the client for the sandbox (`sandbox/runner.py`)
+- `tools.py`, `sandbox.py`, `firecrawl.py`: the tool protocol, the sandbox client (`sandbox/runner.py`) and the Firecrawl client
 - `llm.py`: Gemma client. Gemma has no system role and needs alternating turns, so prompts are shaped for that
 
 Frontend (`frontend/`, Next.js App Router + TypeScript)
