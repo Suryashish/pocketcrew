@@ -1,0 +1,86 @@
+# PocketCrew: `cp .env.example .env`, fill in two keys, `docker compose up -d`.
+name: pocketcrew
+
+x-app: &app
+  build: .
+  image: pocketcrew:latest
+  restart: unless-stopped
+  environment: &app-env
+    DATABASE_URL: postgresql://pocketcrew:${POSTGRES_PASSWORD:-pocketcrew}@db:5432/pocketcrew
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    LLM_MODEL: ${LLM_MODEL:-gemma-3-27b-it}
+    LLM_BASE_URL: ${LLM_BASE_URL:-}
+    LLM_THINKING_TOKENS: ${LLM_THINKING_TOKENS:-}
+    LLM_API_KEY: ${LLM_API_KEY:-}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
+    PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+    SECRET_KEY: ${SECRET_KEY:-}
+    ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-true}
+    MAX_AGENTS_PER_USER: ${MAX_AGENTS_PER_USER:-12}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pocketcrew
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pocketcrew}
+      POSTGRES_DB: pocketcrew
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pocketcrew -d pocketcrew"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    <<: *app
+    ports:
+      - "${PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Long-polls Telegram, so no public URL or webhook is required.
+  bot:
+    <<: *app
+    command: ["python", "-m", "app.bot"]
+    healthcheck:
+      disable: true
+    depends_on:
+      web:
+        condition: service_healthy
+
+  # Optional: run Gemma locally instead of Google AI Studio.
+  #   docker compose --profile local up -d
+  # with LLM_BASE_URL=http://ollama:11434/v1 and LLM_MODEL=gemma3:4b in .env
+  ollama:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "8192"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama-pull:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-gemma3:4b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  ollama-data:

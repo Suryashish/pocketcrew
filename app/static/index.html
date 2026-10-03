@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PocketCrew · A crew of AI agents in one Telegram chat</title>
+  <meta name="description" content="Hire a crew of Gemma-powered AI agents and talk to all of them from a single Telegram chat.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛟</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="loading" class="center"><span class="spinner"></span></div>
+
+  <!-- Landing (signed out) -->
+  <div id="auth" hidden>
+    <nav class="nav">
+      <a class="brand" href="#top"><span class="buoy">🛟</span> PocketCrew</a>
+      <div class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#commands">Commands</a>
+      </div>
+      <div class="nav-cta">
+        <button class="link" data-auth="login">Log in</button>
+        <button class="btn dark" data-auth="signup">Get started</button>
+      </div>
+    </nav>
+
+    <header class="hero" id="top">
+      <div class="hero-copy">
+        <p class="eyebrow rise" style="--d:0"><span class="dot"></span> Open source · runs only on Gemma</p>
+        <h1 class="rise" style="--d:1">One chat.<br><em>A whole crew.</em></h1>
+        <p class="lede rise" style="--d:2">Hire AI agents in a sentence and talk to all of them from a single Telegram chat. You just type. The right agent answers.</p>
+        <div class="hero-actions rise" style="--d:3">
+          <button class="btn accent big" data-auth="signup">Hire your crew <span class="arrow">→</span></button>
+          <a class="btn ghost big" href="#how">See how it works</a>
+        </div>
+        <p class="fine rise" style="--d:4">Free to start. Connect Telegram in one tap.</p>
+      </div>
+
+      <div class="demo rise" style="--d:3" aria-label="Animated example of a Telegram conversation with several agents">
+        <div class="demo-bar">
+          <span class="demo-avatar">🛟</span>
+          <div><b>PocketCrew</b><small id="demo-status">bot</small></div>
+        </div>
+        <div class="demo-crew" id="demo-crew"></div>
+        <div class="demo-log" id="demo-log"></div>
+        <div class="demo-input"><span id="demo-typed"></span><span class="caret"></span></div>
+      </div>
+    </header>
+
+    <section class="strip reveal">
+      <span>No bot setup per user</span><i></i><span>No webhooks</span><i></i><span>No prompt engineering</span><i></i><span>No vector database</span>
+    </section>
+
+    <section class="section" id="how">
+      <p class="eyebrow reveal">How it works</p>
+      <h2 class="reveal">From sign-up to first reply<br><em>in under a minute.</em></h2>
+      <ol class="steps">
+        <li class="reveal"><span class="num">01</span><h3>Describe an agent</h3><p>Type one sentence, like <q>a patient maths tutor for my ten-year-old</q>. Gemma writes its name, role and instructions.</p></li>
+        <li class="reveal"><span class="num">02</span><h3>Tap to connect</h3><p>One button, or one QR code. Your Telegram chat is linked to your crew. You never touch BotFather.</p></li>
+        <li class="reveal"><span class="num">03</span><h3>Just type</h3><p>A dispatcher reads each message and hands it to the agent whose job fits. No menus, no switching.</p></li>
+      </ol>
+    </section>
+
+    <section class="section" id="features">
+      <p class="eyebrow reveal">Why it's different</p>
+      <h2 class="reveal">Built around the chat,<br><em>not around a dashboard.</em></h2>
+      <div class="bento">
+        <article class="tile wide reveal">
+          <h3>Auto-routing</h3>
+          <p>Ask about dinner and Chef answers. Ask about a stack trace and Coder steps in. Follow-ups stay with the same agent, and <code>@Name</code> reaches one directly.</p>
+          <div class="route-art" aria-hidden="true">
+            <span class="route-msg">“why is my build failing?”</span>
+            <span class="route-line"></span>
+            <span class="route-chips"><b>✨ Sidekick</b><b>🍳 Chef</b><b class="on">🧑‍💻 Coder</b></span>
+          </div>
+        </article>
+        <article class="tile reveal">
+          <h3>Hire in a sentence</h3>
+          <p>On the web, or without leaving Telegram.</p>
+          <pre class="mono">/hire a strict Spanish tutor</pre>
+        </article>
+        <article class="tile reveal">
+          <h3>Teach by sending files</h3>
+          <p>Drop a PDF, Markdown or text file into the chat. The agent answers from it from then on.</p>
+          <div class="file-art" aria-hidden="true"><span>📄 handbook.pdf</span><span>→</span><span>🎓</span></div>
+        </article>
+        <article class="tile wide reveal">
+          <h3>One shared memory</h3>
+          <p>Tell the crew something once. Every agent knows it from then on, so you never repeat yourself.</p>
+          <pre class="mono">/remember I'm vegetarian and I live in Kolkata</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="commands">
+      <p class="eyebrow reveal">In Telegram</p>
+      <h2 class="reveal">Everything is<br><em>a message away.</em></h2>
+      <dl class="cmds reveal">
+        <div><dt>any message</dt><dd>The best-suited agent answers</dd></div>
+        <div><dt>@Coder …</dt><dd>Talk to one agent directly</dd></div>
+        <div><dt>/agents</dt><dd>See your crew, pin one, or go back to auto</dd></div>
+        <div><dt>/hire …</dt><dd>Create an agent from a description</dd></div>
+        <div><dt>a file</dt><dd>The agent reads it and remembers it</dd></div>
+        <div><dt>/remember …</dt><dd>Save a fact for the whole crew</dd></div>
+        <div><dt>/new</dt><dd>Start a fresh conversation</dd></div>
+      </dl>
+    </section>
+
+    <section class="cta reveal">
+      <h2>Your crew is<br><em>one sentence away.</em></h2>
+      <button class="btn accent big" data-auth="signup">Hire your crew <span class="arrow">→</span></button>
+    </section>
+
+    <footer class="foot">
+      <span class="brand"><span class="buoy">🛟</span> PocketCrew</span>
+      <span>Open source under MIT · Self-host with Docker Compose · Powered only by Google's Gemma</span>
+    </footer>
+  </div>
+
+  <!-- Sign up / log in -->
+  <dialog id="auth-dialog" class="sheet narrow">
+    <form id="auth-form">
+      <div class="dialog-head">
+        <h2 id="auth-title">Create your account</h2>
+        <button class="icon" type="button" data-close aria-label="Close">✕</button>
+      </div>
+      <label>Email<input id="auth-email" type="email" autocomplete="email" required></label>
+      <label>Password<input id="auth-password" type="password" minlength="8" autocomplete="new-password" required placeholder="At least 8 characters"></label>
+      <p id="auth-error" class="error" hidden></p>
+      <button id="auth-submit" class="btn accent big full" type="submit">Sign up</button>
+      <p class="switch"><span id="auth-switch-text">Already have an account?</span> <a href="#" id="auth-switch">Log in</a></p>
+    </form>
+  </dialog>
+
+  <!-- Dashboard (signed in) -->
+  <div id="app" hidden>
+    <header class="nav app-nav">
+      <span class="brand"><span class="buoy">🛟</span> PocketCrew</span>
+      <div class="nav-cta">
+        <span id="model-pill" class="pill" title="Model status"></span>
+        <span id="user-email" class="muted small hide-sm"></span>
+        <button id="logout" class="link">Log out</button>
+      </div>
+    </header>
+    <div id="banner" class="banner" hidden></div>
+    <main class="layout">
+      <section>
+        <div class="section-head">
+          <div>
+            <h1 class="page-title">Your <em>crew</em></h1>
+            <p class="muted">Each agent has its own job, instructions and knowledge.</p>
+          </div>
+          <button id="new-agent" class="btn dark">+ Hire an agent</button>
+        </div>
+        <div id="agents" class="agents"></div>
+      </section>
+      <aside>
+        <div class="card" id="telegram-card">
+          <h3>Telegram</h3>
+          <div id="telegram-body"></div>
+        </div>
+        <div class="card">
+          <h3>Shared memory</h3>
+          <p class="muted small">Facts every agent in your crew knows about you.</p>
+          <ul id="memory-list" class="list"></ul>
+          <form id="memory-form" class="row">
+            <input id="memory-input" maxlength="400" placeholder="e.g. I'm vegetarian" required>
+            <button class="btn ghost" type="submit">Add</button>
+          </form>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Agent editor -->
+  <dialog id="agent-dialog" class="sheet">
+    <div class="dialog-head">
+      <h2 id="dialog-title">Hire an agent</h2>
+      <button class="icon" id="dialog-close" aria-label="Close">✕</button>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="profile" class="active">Profile</button>
+      <button data-tab="knowledge">Knowledge</button>
+      <button data-tab="chat">Test chat</button>
+    </nav>
+
+    <div data-panel="profile">
+      <div id="draft-box" class="draft">
+        <label>Describe the agent in one sentence
+          <div class="row">
+            <input id="draft-input" maxlength="600" placeholder="a patient maths tutor for my 10-year-old">
+            <button id="draft-btn" class="btn accent" type="button">✨ Write it for me</button>
+          </div>
+        </label>
+        <div class="chips" id="templates"></div>
+      </div>
+      <form id="agent-form">
+        <div class="row">
+          <label class="emoji-field">Emoji<input id="f-emoji" maxlength="8" value="🤖"></label>
+          <label class="grow">Name<input id="f-name" maxlength="32" required placeholder="Coder"></label>
+        </div>
+        <label>Role <span class="muted small">one line; the dispatcher routes by this</span>
+          <input id="f-role" maxlength="160" placeholder="Helps with programming questions and code review">
+        </label>
+        <label>Instructions
+          <textarea id="f-instructions" rows="7" maxlength="4000" placeholder="You are…"></textarea>
+        </label>
+        <p id="agent-error" class="error" hidden></p>
+        <div class="row between">
+          <button id="agent-delete" class="btn ghost danger" type="button" hidden>Delete agent</button>
+          <span></span>
+          <button id="agent-save" class="btn dark" type="submit">Hire</button>
+        </div>
+      </form>
+    </div>
+
+    <div data-panel="knowledge" hidden>
+      <p class="muted small">Add notes, docs or PDFs. The agent pulls in the relevant parts when answering. You can also send a file straight to the Telegram bot.</p>
+      <ul id="doc-list" class="list"></ul>
+      <form id="doc-form">
+        <input id="doc-title" maxlength="160" placeholder="Title (optional)">
+        <textarea id="doc-text" rows="5" placeholder="Paste text here…"></textarea>
+        <p id="doc-error" class="error" hidden></p>
+        <div class="row between">
+          <label class="btn ghost file">Upload .txt / .md / .pdf<input id="doc-file" type="file" accept=".txt,.md,.markdown,.pdf,.csv,.json,text/*,application/pdf" hidden></label>
+          <button class="btn dark" type="submit">Add text</button>
+        </div>
+      </form>
+    </div>
+
+    <div data-panel="chat" hidden>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="chat-form" class="row">
+        <input id="chat-input" maxlength="6000" placeholder="Say something…" autocomplete="off" required>
+        <button class="btn dark" type="submit">Send</button>
+        <button class="btn ghost" type="button" id="chat-reset" title="Clear conversation">Reset</button>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+  <script src="/landing.js"></script>
+</body>
+</html>
