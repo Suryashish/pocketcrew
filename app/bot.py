@@ -185,15 +185,20 @@ class Bot:
                 last_id = link.last_agent_id
                 db.commit()  # don't hold a connection while the dispatcher thinks
                 agent = brain.route(agents, text, last_id)
+            def progress(step: str) -> None:  # tell the user what the agent is doing as it works
+                try:
+                    self.tg.send(chat_id, step)
+                except Exception:
+                    log.info("Could not send a progress update to %s", chat_id)
+
             try:
-                answer = brain.respond(db, user, agent, f"tg:{chat_id}", text, "Telegram")
+                reply = brain.respond(db, user, agent, f"tg:{chat_id}", text, "Telegram", on_step=progress, budget=300)
             except llm.LLMError as e:
                 self.tg.send(chat_id, f"⚠️ {e}")
                 return
         link.last_agent_id = agent.id
         db.commit()
-        if len(agents) > 1:
-            answer = f"**{agent.emoji} {agent.name}**\n{answer}"
+        answer = f"**{agent.emoji} {agent.name}**\n{reply.text}" if len(agents) > 1 else reply.text
         self.tg.send(chat_id, answer)
 
     def learn_file(self, db: Session, link: TelegramLink, msg: dict, caption: str) -> None:

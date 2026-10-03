@@ -12,15 +12,16 @@ import httpx
 import segno
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import brain, knowledge, llm, security
+from . import brain, knowledge, llm, sandbox, security
 from .config import settings
-from .db import Agent, Doc, Chunk, LinkToken, Memory, Message, TelegramLink, User, clean, get_db, init_db, now
+from .db import Agent, Doc, Chunk, LinkToken, Memory, Message, Sandbox, TelegramLink, User, clean, get_db, init_db, now
 from .telegram import Telegram, TelegramError
 
 log = logging.getLogger("pocketcrew.web")
@@ -96,7 +97,7 @@ def set_session(response: Response, user: User) -> None:
 
 
 def agent_json(a: Agent) -> dict:
-    return {"id": a.id, "name": a.name, "emoji": a.emoji, "role": a.role, "instructions": a.instructions}
+    return {"id": a.id, "name": a.name, "emoji": a.emoji, "role": a.role, "instructions": a.instructions, "tools": a.tools}
 
 
 _bot_lock = threading.Lock()
@@ -134,6 +135,7 @@ class AgentIn(BaseModel):
     emoji: str = Field(default="🤖", max_length=16)
     role: str = Field(default="", max_length=160)
     instructions: str = Field(default="", max_length=4000)
+    tools: bool = True
 
 
 class DraftIn(BaseModel):
@@ -174,6 +176,7 @@ def status():
     return {
         "llm": llm.status(),
         "telegram": {"configured": bool(settings.telegram_token), "bot": bot_username()},
+        "sandbox": {"available": sandbox.available()},
         "signups": settings.allow_signups,
     }
 
@@ -237,6 +240,7 @@ def _validated(body: AgentIn, existing: list[Agent], editing: Agent | None = Non
         "emoji": clean(body.emoji).strip() or "🤖",
         "role": " ".join(clean(body.role).split()),
         "instructions": clean(body.instructions).strip(),
+        "tools": body.tools,
     }
 
 
@@ -366,7 +370,7 @@ def chat(body: ChatIn, agent: Agent = Depends(own_agent), user: User = Depends(c
         reply = brain.respond(db, user, agent, f"web:{agent.id}", body.message, "the web dashboard")
     except llm.LLMError as e:
         raise HTTPException(503, str(e))
-    return {"reply": reply}
+    return {"reply": reply.text, "steps": reply.steps}
 
 
 @app.delete("/api/agents/{agent_id}/chat")
@@ -374,6 +378,60 @@ def reset_chat(agent: Agent = Depends(own_agent), db: Session = Depends(get_db))
     db.execute(delete(Message).where(Message.chat_key == f"web:{agent.id}"))
     db.commit()
     return {"ok": True}
+
+
+# --- the agent's computer ---------------------------------------------------
+
+@app.get("/api/agents/{agent_id}/sandbox")
+def sandbox_state(agent: Agent = Depends(own_agent)):
+    return sandbox.state(agent.id)
+
+
+@app.delete("/api/agents/{agent_id}/sandbox")
+def sandbox_reset(agent: Agent = Depends(own_agent)):
+    """Wipe the agent's workspace: its files, its running server and its preview link."""
+    sandbox.remove(agent.id)
+    return {"ok": True}
+
+
+_preview_http = httpx.Client(timeout=httpx.Timeout(30, connect=3), follow_redirects=False)
+_ASLEEP = (
+    "<!doctype html><meta charset=utf-8><title>Preview asleep</title>"
+    "<body style='font:16px system-ui;background:#09090b;color:#eee;display:grid;place-items:center;height:100vh;margin:0'>"
+    "<p>This preview isn't running right now. Ask the agent to start it again.</p>"
+)
+
+
+@app.api_route("/preview/{token}/{path:path}", methods=["GET", "HEAD", "POST"])
+async def preview(token: str, path: str, request: Request, db: Session = Depends(get_db)):
+    """Serve what an agent's sandbox has on its web port. The token in the URL is the access control."""
+    row = db.scalar(select(Sandbox).where(Sandbox.token == token))
+    if not row:
+        raise HTTPException(404, "No such preview.")
+    agent_id = row.agent_id
+    db.commit()
+    url = f"http://{sandbox.host()}:{sandbox.port(agent_id)}/{path}"
+    body = await request.body()
+
+    def fetch():
+        return _preview_http.request(
+            request.method, url, params=request.query_params, content=body or None,
+            headers={k: v for k, v in request.headers.items() if k in ("accept", "content-type", "range", "user-agent")},
+        )
+
+    try:
+        upstream = await run_in_threadpool(fetch)
+    except httpx.HTTPError:
+        return HTMLResponse(_ASLEEP, status_code=502)
+    headers = {k: v for k, v in upstream.headers.items() if k.lower() in ("content-type", "location", "cache-control", "content-range", "accept-ranges")}
+    location = next((v for k, v in headers.items() if k.lower() == "location"), "")
+    if location.startswith("/"):  # keep the server's own redirects inside this preview
+        headers = {k: v for k, v in headers.items() if k.lower() != "location"} | {"Location": f"/p/{token}{location}"}
+    # A preview is untrusted content. `sandbox` gives it an opaque origin, so
+    # scripts in it can never call this app's API as the person viewing it.
+    headers["Content-Security-Policy"] = "sandbox allow-scripts allow-forms allow-popups allow-modals"
+    headers["X-Robots-Tag"] = "noindex"
+    return Response(upstream.content, status_code=upstream.status_code, headers=headers)
 
 
 # --- shared memory ----------------------------------------------------------

@@ -8,3 +8,4 @@ pyjwt==2.10.1
 python-multipart==0.0.20
 pypdf==5.1.0
 segno==1.6.1
+ddgs==9.16.0

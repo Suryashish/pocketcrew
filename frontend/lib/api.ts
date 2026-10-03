@@ -38,16 +38,18 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 export const errorText = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong.");
 
 export type User = { id: number; email: string };
-export type Agent = { id: number; name: string; emoji: string; role: string; instructions: string };
+export type Agent = { id: number; name: string; emoji: string; role: string; instructions: string; tools: boolean };
 export type AgentDraft = Omit<Agent, "id">;
 export type Doc = { id: number; title: string; chars: number };
 export type Memory = { id: number; text: string };
 export type ChatMessage = { role: "user" | "assistant" | "note" | "thinking"; content: string };
+export type ComputerState = { available: boolean; exists: boolean; preview: string };
 export type TelegramLink = { id: number; display: string };
 export type TelegramState = { configured: boolean; bot: string; links: TelegramLink[] };
 export type LinkOffer = { url: string; qr: string; minutes: number };
 export type Status = {
   llm: { model: string; reachable: boolean; model_ready: boolean; key_missing: boolean };
   telegram: { configured: boolean; bot: string };
+  sandbox: { available: boolean };
   signups: boolean;
 };

@@ -8,6 +8,7 @@ os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
 os.environ["GEMINI_API_KEY"] = "test"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["PUBLIC_URL"] = "http://crew.test"
+os.environ["TOOLS_ENABLED"] = "false"  # tool tests switch it on with fakes
 
 import pytest
 from fastapi.testclient import TestClient

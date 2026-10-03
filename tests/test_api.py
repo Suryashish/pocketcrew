@@ -51,7 +51,7 @@ def test_chat_uses_instructions_knowledge_memory_and_history(client, user, gemma
     gemma.answers = ["It's tangerine42.", "You're welcome."]
 
     r = client.post(f"/api/agents/{agent_id}/chat", json={"message": "what is the wifi password?"})
-    assert r.json() == {"reply": "It's tangerine42."}
+    assert r.json() == {"reply": "It's tangerine42.", "steps": []}
     system = gemma.calls[0]["system"]
     assert "Sidekick" in system and "tangerine42" in system and "Lives in Kolkata" in system
 

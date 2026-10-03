@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from .config import settings
@@ -46,7 +46,16 @@ class Agent(Base):
     # One line describing what the agent is for; the router reads this.
     role: Mapped[str] = mapped_column(String(160), default="")
     instructions: Mapped[str] = mapped_column(Text, default="")
+    # Whether this agent may use its sandbox computer and the internet.
+    tools: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("TRUE"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Sandbox(Base):
+    """The secret token in an agent's preview links."""
+    __tablename__ = "sandboxes"
+    agent_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
 
 class Doc(Base):
@@ -113,6 +122,12 @@ class KV(Base):
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    # create_all never alters existing tables, so columns added after the first
+    # release are patched in here.
+    if "tools" not in {c["name"] for c in inspect(engine).get_columns("agents")}:
+        default = "TRUE" if engine.dialect.name == "postgresql" else "1"
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE agents ADD COLUMN tools BOOLEAN NOT NULL DEFAULT {default}"))
 
 
 def get_db():

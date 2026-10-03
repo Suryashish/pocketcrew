@@ -2,12 +2,16 @@
 import json
 import logging
 import re
+import time
+from dataclasses import dataclass, field
 from datetime import date
+from typing import Callable
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from . import knowledge, llm
+from . import knowledge, llm, sandbox, tools
+from .config import settings
 from .db import Agent, Chunk, Doc, Memory, Message, TelegramLink, User, clean
 
 log = logging.getLogger("pocketcrew.brain")
@@ -72,8 +76,22 @@ def history(db: Session, chat_key: str) -> list[dict]:
     return list(reversed(out))
 
 
-def respond(db: Session, user: User, agent: Agent, chat_key: str, text: str, channel: str) -> str:
-    """Answer `text` as `agent` and record the exchange. Raises llm.LLMError."""
+@dataclass
+class Reply:
+    text: str
+    steps: list[str] = field(default_factory=list)  # what the agent did with its tools, in order
+
+
+def respond(
+    db: Session, user: User, agent: Agent, chat_key: str, text: str, channel: str,
+    on_step: Callable[[str], None] | None = None, budget: float = 150,
+) -> Reply:
+    """Answer `text` as `agent` and record the exchange. Raises llm.LLMError.
+
+    An agent with tools works in a loop: the model either answers, or asks for
+    tools, whose results are fed back until it answers. `on_step` is told about
+    each tool call as it starts, and `budget` caps the loop in seconds.
+    """
     text = clean(text).strip()[:6000]
     memories = [
         m.text
@@ -85,14 +103,53 @@ def respond(db: Session, user: User, agent: Agent, chat_key: str, text: str, cha
     reference = knowledge.top_chunks(text, chunks)
     past = history(db, chat_key)
     system = system_prompt(agent, list(reversed(memories)), reference, channel)
+    use_tools = tools.enabled(agent)
+    agent_id, user_id = agent.id, user.id
     db.commit()  # hand the connection back to the pool while the model thinks
 
-    answer = clean(llm.chat(system, past + [{"role": "user", "content": text}]))
+    turns = past + [{"role": "user", "content": text}]
+    steps: list[str] = []
+    links: list[str] = []
+    if use_tools:
+        system += "\n\n" + tools.instructions(sandbox.available())
+        answer = ""
+        deadline = time.monotonic() + budget
+        for _ in range(settings.max_tool_steps):
+            out = llm.chat(system, turns, max_tokens=4096)
+            calls = tools.parse(out)
+            if not calls:
+                answer = out
+                break
+            results = []
+            for call in calls:
+                label = tools.describe(call)
+                steps.append(label)
+                if on_step:
+                    on_step(label)
+                result = tools.execute(agent_id, call)
+                links += re.findall(r"Public link for the user: (\S+)", result)
+                results.append(f'<result tool="{call.name}">\n{result}\n</result>')
+            turns = turns + [
+                {"role": "assistant", "content": tools.compact(out)},
+                {"role": "user", "content": "\n\n".join(results)
+                    + "\n\nUse more tools if the task is not finished. Otherwise answer the user in plain text."},
+            ]
+            if time.monotonic() > deadline:
+                break
+        if not answer:  # out of steps or time: make it wrap up with what it has
+            turns = turns + [{"role": "user", "content": "Stop using tools now. Tell the user what you did and the result."}]
+            answer = tools.strip_calls(llm.chat(system, turns, max_tokens=900)) or "I ran out of steps before finishing."
+        for link in dict.fromkeys(links):  # the user must always get the link, even if the model forgot it
+            if link not in answer:
+                answer += f"\n\nOpen it here: {link}"
+    else:
+        answer = llm.chat(system, turns)
+    answer = clean(answer)
 
-    db.add(Message(user_id=user.id, agent_id=agent.id, chat_key=chat_key, role="user", content=text))
-    db.add(Message(user_id=user.id, agent_id=agent.id, chat_key=chat_key, role="assistant", content=answer))
+    db.add(Message(user_id=user_id, agent_id=agent_id, chat_key=chat_key, role="user", content=text))
+    db.add(Message(user_id=user_id, agent_id=agent_id, chat_key=chat_key, role="assistant", content=answer))
     db.commit()
-    return answer
+    return Reply(answer, steps)
 
 
 def match_mention(agents: list[Agent], text: str) -> tuple[Agent, str] | None:
@@ -252,5 +309,7 @@ def delete_agent(db: Session, agent: Agent) -> None:
             link.active_agent_id = None
         if link.last_agent_id == agent.id:
             link.last_agent_id = None
+    agent_id = agent.id
     db.delete(agent)
     db.commit()
+    sandbox.remove(agent_id)

@@ -11,6 +11,7 @@ export function renderReply(text: string): string {
         ? `<pre>${part.replace(/^[\w+#.-]*\n/, "").trim()}</pre>`
         : part
             .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+            .replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)\]'"]/g, '<a href="$&" target="_blank" rel="noopener noreferrer">$&</a>')
             .replace(/^\s{0,3}#{1,6}\s+(.+)$/gm, "<b>$1</b>")
             .replace(/^(\s*)[*-]\s+/gm, "$1• ")
             .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, "<b>$1</b>")

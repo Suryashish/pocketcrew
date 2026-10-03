@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, type Agent, type AgentDraft, type ChatMessage, type Doc } from "@/lib/api";
+import { api, errorText, type Agent, type AgentDraft, type ChatMessage, type ComputerState, type Doc } from "@/lib/api";
 import { useFresh } from "@/lib/hooks";
 import { renderReply } from "@/lib/markdown";
 import VoiceBuilder from "./VoiceBuilder";
@@ -9,19 +9,19 @@ import VoiceBuilder from "./VoiceBuilder";
 export type Tab = "profile" | "knowledge" | "chat" | "voice";
 
 const TEMPLATES: AgentDraft[] = [
-  { name: "Coder", emoji: "🧑‍💻", role: "Programming help, debugging and code review",
+  { tools: true, name: "Coder", emoji: "🧑‍💻", role: "Programming help, debugging and code review",
     instructions: "You are a senior software engineer. Give working code first, then a short explanation. Point out bugs and edge cases plainly. Ask for the language or error message when it is missing. Keep answers tight." },
-  { name: "Writer", emoji: "✍️", role: "Drafts and polishes emails, posts and messages",
+  { tools: true, name: "Writer", emoji: "✍️", role: "Drafts and polishes emails, posts and messages",
     instructions: "You are a sharp editor and copywriter. Write in clear, natural language and match the tone the user asks for. When editing, return the improved text first, then at most two notes on what changed. Never pad." },
-  { name: "Tutor", emoji: "🎓", role: "Explains concepts step by step and quizzes the user",
+  { tools: true, name: "Tutor", emoji: "🎓", role: "Explains concepts step by step and quizzes the user",
     instructions: "You are a patient tutor. Explain one idea at a time using simple words and a concrete example. After explaining, ask one short question to check understanding. Encourage the user and correct mistakes gently." },
-  { name: "Coach", emoji: "🏋️", role: "Fitness, habits and daily accountability",
+  { tools: true, name: "Coach", emoji: "🏋️", role: "Fitness, habits and daily accountability",
     instructions: "You are an upbeat, practical coach. Give specific, realistic plans and ask about constraints such as time, equipment and injuries. Hold the user accountable for what they said they would do. You are not a doctor; say so for medical questions." },
-  { name: "Researcher", emoji: "🔎", role: "Summarises documents and answers questions from them",
+  { tools: true, name: "Researcher", emoji: "🔎", role: "Summarises documents and answers questions from them",
     instructions: "You are a careful research assistant. Answer from the reference material you have been given and say clearly when it does not cover the question. Prefer short summaries with the key facts and numbers. Never invent sources." },
 ];
 
-const BLANK: AgentDraft = { name: "", emoji: "🤖", role: "", instructions: "" };
+const BLANK: AgentDraft = { name: "", emoji: "🤖", role: "", instructions: "", tools: true };
 
 type Props = {
   agent: Agent | null;              // null while hiring a new one
@@ -72,7 +72,8 @@ function Profile({ agent, onVoice, onSaved, onDeleted }: Pick<Props, "agent" | "
     setError("");
     setDrafting(true);
     try {
-      setForm(await api<AgentDraft>("POST", "/api/agents/draft", { description: description.trim() }));
+      const drafted = await api<Omit<AgentDraft, "tools">>("POST", "/api/agents/draft", { description: description.trim() });
+      setForm((current) => ({ ...drafted, tools: current.tools }));
     } catch (err) {
       setError(errorText(err));
     }
@@ -153,6 +154,14 @@ function Profile({ agent, onVoice, onSaved, onDeleted }: Pick<Props, "agent" | "
             value={form.instructions} onChange={(e) => set({ instructions: e.target.value })}
           />
         </label>
+        <label className="toggle">
+          <input type="checkbox" checked={form.tools} onChange={(e) => set({ tools: e.target.checked })} />
+          <span>
+            <b>Give it a computer and the internet</b>
+            <small>It can search the web, run commands in a Linux sandbox, and build and host web pages.</small>
+          </span>
+        </label>
+        {agent && form.tools && <Computer agent={agent} />}
         {error && <p className="error">{error}</p>}
         <div className="row between">
           {agent ? <button className="btn ghost danger" type="button" onClick={remove}>Delete agent</button> : <span />}
@@ -162,6 +171,31 @@ function Profile({ agent, onVoice, onSaved, onDeleted }: Pick<Props, "agent" | "
         </div>
       </form>
     </div>
+  );
+}
+
+/** The state of an agent's sandbox workspace: its live preview link and a way to wipe it. */
+function Computer({ agent }: { agent: Agent }) {
+  const [state, setState] = useState<ComputerState | null>(null);
+  const load = () => api<ComputerState>("GET", `/api/agents/${agent.id}/sandbox`).then(setState, () => {});
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [agent.id]);
+
+  async function wipe() {
+    if (!confirm(`Erase all of ${agent.name}'s files and stop anything it is hosting?`)) return;
+    await api("DELETE", `/api/agents/${agent.id}/sandbox`).catch(() => {});
+    load();
+  }
+
+  if (!state) return null;
+  if (!state.available) return <p className="muted small computer">The sandbox isn&apos;t running on this server, so only web search is available.</p>;
+  if (!state.exists) return <p className="muted small computer">Its workspace is empty. Ask it to build something.</p>;
+  return (
+    <p className="muted small computer">
+      {state.preview
+        ? <>Hosting a page: <a href={state.preview} target="_blank" rel="noopener noreferrer">open preview</a>. </>
+        : "It has files in its workspace. "}
+      <button type="button" className="link small" onClick={wipe}>Erase its files</button>
+    </p>
   );
 }
 
@@ -271,15 +305,16 @@ function Chat({ agent }: { agent: Agent }) {
     if (!message || waiting) return;
     setDraft("");
     setWaiting(true);
-    setMessages((all) => [...all, { role: "user", content: message }, { role: "thinking", content: `${agent.name} is thinking…` }]);
-    let reply: ChatMessage;
+    setMessages((all) => [...all, { role: "user", content: message }, { role: "thinking", content: agent.tools ? `${agent.name} is working… this can take a minute or two` : `${agent.name} is thinking…` }]);
+    let reply: ChatMessage[];
     try {
-      const data = await api<{ reply: string }>("POST", `/api/agents/${agent.id}/chat`, { message });
-      reply = { role: "assistant", content: data.reply };
+      const data = await api<{ reply: string; steps: string[] }>("POST", `/api/agents/${agent.id}/chat`, { message });
+      // Show what it did with its tools, then what it said.
+      reply = [...data.steps.map((step): ChatMessage => ({ role: "note", content: step })), { role: "assistant", content: data.reply }];
     } catch (err) {
-      reply = { role: "note", content: `⚠️ ${errorText(err)}` };
+      reply = [{ role: "note", content: `⚠️ ${errorText(err)}` }];
     }
-    setMessages((all) => [...all.slice(0, -1), reply]);
+    setMessages((all) => [...all.slice(0, -1), ...reply]);
     setWaiting(false);
     input.current?.focus();
   }

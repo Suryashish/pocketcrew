@@ -36,6 +36,11 @@ class Settings:
         self.telegram_api_base = _env("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
         self.bot_workers = _int("BOT_WORKERS", 8)
 
+        # Tools: agents can search the web and work in the shared sandbox container.
+        self.tools_enabled = _env("TOOLS_ENABLED", "true").lower() not in ("0", "false", "no")
+        self.sandbox_url = (_env("SANDBOX_URL") or "http://sandbox:7000").rstrip("/")
+        self.max_tool_steps = _int("MAX_TOOL_STEPS", 8)
+
         self.max_agents = _int("MAX_AGENTS_PER_USER", 12)
         self.max_doc_bytes = _int("MAX_DOC_BYTES", 2_000_000)
         self.max_knowledge_chars = _int("MAX_KNOWLEDGE_CHARS", 400_000)

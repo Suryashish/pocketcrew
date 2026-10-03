@@ -19,6 +19,11 @@ x-app: &app
     SECRET_KEY: ${SECRET_KEY:-}
     ALLOW_SIGNUPS: ${ALLOW_SIGNUPS:-true}
     MAX_AGENTS_PER_USER: ${MAX_AGENTS_PER_USER:-12}
+    TOOLS_ENABLED: ${TOOLS_ENABLED:-true}
+    MAX_TOOL_STEPS: ${MAX_TOOL_STEPS:-}
+    SANDBOX_URL: http://sandbox:7000
+  # `sandbox` is the only network the sandbox container is on; the database is not on it.
+  networks: [default, sandbox]
 
 services:
   db:
@@ -42,6 +47,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # The shared Linux computer agents run commands in and serve previews from.
+  # Unprivileged, resource-capped, and unable to reach the database.
+  sandbox:
+    build: ./sandbox
+    image: pocketcrew-sandbox:latest
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: ${SANDBOX_MEMORY:-2g}
+    cpus: ${SANDBOX_CPUS:-2}
+    pids_limit: 512
+    volumes:
+      - sandbox-data:/workspace
+    networks: [sandbox]
 
   # Next.js dashboard and landing page.
   web:
@@ -92,6 +113,10 @@ services:
       ollama:
         condition: service_healthy
 
+networks:
+  sandbox:
+
 volumes:
   db-data:
+  sandbox-data:
   ollama-data:

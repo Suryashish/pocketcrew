@@ -11,6 +11,8 @@ No bot to create per user, no webhooks, no prompt engineering.
   each message and hands it to the agent whose role fits best. `@Name` talks to one directly.
 - **Hire in a sentence.** Type `a strict Spanish tutor` on the web or `/hire a strict Spanish tutor`
   in Telegram, and Gemma writes the name, role and instructions.
+- **Agents that act.** Each agent can search the web, run commands on a Linux sandbox, and build and
+  host a web page, then send you the link.
 - **Build by voice.** In the dashboard the app asks four questions out loud, you answer by speaking,
   and Gemma builds and saves the agent. Speech uses the browser's own engine, so Gemma stays the only model.
 - **Teach by sending files.** Send a `.txt`, `.md` or `.pdf` to the bot and the agent answers from it.
@@ -47,6 +49,39 @@ The bot uses long polling, so this works from a laptop with no public URL.
 | `/new` | start a fresh conversation |
 | `/unlink` | disconnect the chat |
 
+## Agent tools and the sandbox
+
+Agents with "Give it a computer and the internet" switched on (the default) can use five tools:
+
+| Tool | What it does |
+| --- | --- |
+| `web_search` | Search the web (DuckDuckGo, no API key) |
+| `fetch_url` | Read a web page as text |
+| `shell` | Run a bash command (Debian, Python 3, Node.js, git, curl; no root; 120 s per command) |
+| `write_file` | Create or overwrite a file in the agent's workspace |
+| `serve` | Start a web server and return a public link, `PUBLIC_URL/p/<token>/` |
+
+Ask an agent to *"build a landing page for my cafe and send me the link"* and it writes the files,
+starts a server and replies with a link you can open. In Telegram you see each step as it happens.
+
+How it is built, and what that means for safety:
+
+- **One shared sandbox container** runs everyone's commands. Each agent has its own folder
+  (`/workspace/<agent id>`) and its own preview port. Agents are separated by folder, **not by a
+  security boundary**: one agent's commands can read another agent's files. Do not put secrets in
+  the sandbox, and treat it as a shared machine. Per-user containers are the natural next step.
+- The sandbox is unprivileged: non-root user, all Linux capabilities dropped, no new privileges,
+  and memory, CPU and process limits. It is on its own network and **cannot reach the database**.
+  It does have outbound internet access.
+- The API never touches the Docker socket. It talks to a small command runner inside the sandbox
+  over an internal network.
+- Preview pages are untrusted content. They are served with `Content-Security-Policy: sandbox`, so a
+  page an agent built cannot call the PocketCrew API as the person viewing it. Anyone with a
+  preview link can open it.
+- Preview links use `PUBLIC_URL`. With the default `http://localhost:8000` they only open on the
+  machine running the stack; set `PUBLIC_URL` to a reachable address for links to work from a phone.
+- Set `TOOLS_ENABLED=false` to switch tools off for everyone, or untick the box on a single agent.
+
 ## Configuration
 
 Everything lives in `.env` (see [.env.example](.env.example)).
@@ -62,6 +97,9 @@ Everything lives in `.env` (see [.env.example](.env.example)).
 | `DATABASE_URL` | bundled Postgres | Point at a hosted Postgres such as Neon |
 | `ALLOW_SIGNUPS` | `true` | Set `false` to close registration |
 | `MAX_AGENTS_PER_USER` | `12` | Crew size limit |
+| `TOOLS_ENABLED` | `true` | Web search and the sandbox for agents |
+| `SANDBOX_MEMORY`, `SANDBOX_CPUS` | `2g`, `2` | Limits for the shared sandbox container |
+| `MAX_TOOL_STEPS` | `8` | Tool rounds an agent may take per message |
 
 ### Running Gemma locally instead
 
@@ -85,7 +123,7 @@ container: Telegram allows one poller per bot token.
 ## How it works
 
 ```
-Browser ──► web (Next.js) ──/api──► api (FastAPI) ──┐
+Browser ──► web (Next.js) ──/api──► api (FastAPI) ──┬──► sandbox (shared Linux container)
                                                     ├──► Postgres
 Telegram ◄──────────────────► bot (long polling) ───┘
                                  │
@@ -100,6 +138,7 @@ Backend (`app/`)
 - `bot.py`: Telegram worker (commands, linking, file learning)
 - `brain.py`: prompt assembly, dispatcher, agent drafting
 - `knowledge.py`: chunking and BM25 retrieval (no embeddings, no extra model)
+- `tools.py`, `sandbox.py`: the tool protocol and the client for the sandbox (`sandbox/runner.py`)
 - `llm.py`: Gemma client. Gemma has no system role and needs alternating turns, so prompts are shaped for that
 
 Frontend (`frontend/`, Next.js App Router + TypeScript)
