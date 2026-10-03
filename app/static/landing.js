@@ -19,6 +19,65 @@
     targets.forEach((t) => seen.observe(t));
   }
 
+  // --- nav, stars, orb parallax, floating card ------------------------------
+  const nav = document.querySelector("#auth .nav");
+  const onScroll = () => nav.classList.toggle("scrolled", scrollY > 24);
+  addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  const canvas = document.getElementById("stars");
+  if (canvas) {
+    const ctx = canvas.getContext("2d");
+    let stars = [];
+    const size = () => {
+      const ratio = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = canvas.clientWidth * ratio;
+      canvas.height = canvas.clientHeight * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const count = Math.round((canvas.clientWidth * canvas.clientHeight) / 9000);
+      stars = Array.from({ length: count }, () => ({
+        x: Math.random() * canvas.clientWidth, y: Math.random() * canvas.clientHeight,
+        r: Math.random() * 1.1 + 0.3, phase: Math.random() * 6.28, speed: Math.random() * 0.9 + 0.3,
+      }));
+    };
+    const draw = (time) => {
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      for (const star of stars) {
+        ctx.globalAlpha = still ? 0.6 : 0.25 + 0.6 * Math.abs(Math.sin(star.phase + (time / 1000) * star.speed));
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.r, 0, 6.28);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+      }
+      if (!still) requestAnimationFrame(draw);
+    };
+    // The landing starts hidden, so size the canvas whenever it actually gets a box.
+    new ResizeObserver(size).observe(canvas);
+    requestAnimationFrame(draw);
+  }
+
+  const orb = document.getElementById("orb");
+  if (orb && !still && matchMedia("(pointer: fine)").matches) {
+    addEventListener("pointermove", (e) => {
+      orb.style.setProperty("--px", `${(e.clientX / innerWidth - 0.5) * 36}px`);
+      orb.style.setProperty("--py", `${(e.clientY / innerHeight - 0.5) * 22}px`);
+    }, { passive: true });
+  }
+
+  const floatAgent = document.getElementById("float-agent");
+  if (floatAgent && !still) {
+    const names = ["🍳 Chef", "🧑‍💻 Coder", "🎓 Tutor", "✍️ Writer", "✨ Sidekick"];
+    let index = 0;
+    setInterval(() => {
+      floatAgent.classList.add("swap");
+      setTimeout(() => {
+        index = (index + 1) % names.length;
+        floatAgent.textContent = names[index];
+        floatAgent.classList.remove("swap");
+      }, 350);
+    }, 2600);
+  }
+
   // --- the demo conversation -----------------------------------------------
   const crewBox = document.getElementById("demo-crew");
   const log = document.getElementById("demo-log");

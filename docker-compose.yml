@@ -6,7 +6,8 @@ x-app: &app
   image: pocketcrew:latest
   restart: unless-stopped
   environment: &app-env
-    DATABASE_URL: postgresql://pocketcrew:${POSTGRES_PASSWORD:-pocketcrew}@db:5432/pocketcrew
+    # Defaults to the bundled Postgres; set DATABASE_URL to use a hosted one (Neon, Supabase, RDS).
+    DATABASE_URL: ${DATABASE_URL:-postgresql://pocketcrew:${POSTGRES_PASSWORD:-pocketcrew}@db:5432/pocketcrew}
     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     LLM_MODEL: ${LLM_MODEL:-gemma-3-27b-it}
     LLM_BASE_URL: ${LLM_BASE_URL:-}

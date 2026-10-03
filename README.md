@@ -57,6 +57,7 @@ Everything lives in `.env` (see [.env.example](.env.example)).
 | `PUBLIC_URL` | `http://localhost:8000` | Where users reach the dashboard; use `https://…` in production |
 | `PORT` | `8000` | Host port for the dashboard |
 | `SECRET_KEY` | generated | Signs login sessions |
+| `DATABASE_URL` | bundled Postgres | Point at a hosted Postgres such as Neon |
 | `ALLOW_SIGNUPS` | `true` | Set `false` to close registration |
 | `MAX_AGENTS_PER_USER` | `12` | Crew size limit |
 

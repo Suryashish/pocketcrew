@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#09090b">
   <title>PocketCrew · A crew of AI agents in one Telegram chat</title>
   <meta name="description" content="Hire a crew of Gemma-powered AI agents and talk to all of them from a single Telegram chat.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛟</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -17,31 +19,56 @@
   <!-- Landing (signed out) -->
   <div id="auth" hidden>
     <nav class="nav">
-      <a class="brand" href="#top"><span class="buoy">🛟</span> PocketCrew</a>
+      <a class="brand" href="#top">PocketCrew</a>
       <div class="nav-links">
+        <a href="#demo">Demo</a>
         <a href="#how">How it works</a>
         <a href="#features">Features</a>
         <a href="#commands">Commands</a>
       </div>
       <div class="nav-cta">
-        <button class="link" data-auth="login">Log in</button>
-        <button class="btn dark" data-auth="signup">Get started</button>
+        <button class="btn dark" data-auth="login">Login</button>
+        <button class="btn accent" data-auth="signup">Sign up</button>
       </div>
     </nav>
 
     <header class="hero" id="top">
+      <canvas id="stars" class="stars" aria-hidden="true"></canvas>
+      <div class="haze" aria-hidden="true"></div>
+
       <div class="hero-copy">
-        <p class="eyebrow rise" style="--d:0"><span class="dot"></span> Open source · runs only on Gemma</p>
-        <h1 class="rise" style="--d:1">One chat.<br><em>A whole crew.</em></h1>
-        <p class="lede rise" style="--d:2">Hire AI agents in a sentence and talk to all of them from a single Telegram chat. You just type. The right agent answers.</p>
-        <div class="hero-actions rise" style="--d:3">
-          <button class="btn accent big" data-auth="signup">Hire your crew <span class="arrow">→</span></button>
-          <a class="btn ghost big" href="#how">See how it works</a>
-        </div>
-        <p class="fine rise" style="--d:4">Free to start. Connect Telegram in one tap.</p>
+        <h1 class="rise" style="--d:0">One Chat.<br>A Whole Crew.</h1>
+        <p class="lede rise" style="--d:1">Hire AI agents in a sentence and talk to all of them from a single Telegram chat, powered by Gemma.</p>
+        <button class="btn accent big rise" style="--d:2" data-auth="signup">Hire your crew</button>
       </div>
 
-      <div class="demo rise" style="--d:3" aria-label="Animated example of a Telegram conversation with several agents">
+      <div class="orb-wrap rise" style="--d:3" id="orb" aria-hidden="true">
+        <div class="orb"><i class="orb-hue"></i><i class="orb-blue"></i><i class="orb-core"></i><i class="orb-rim"></i></div>
+      </div>
+
+      <div class="float float-left rise" style="--d:5" aria-hidden="true">
+        <div class="float-head"><span>Dispatcher</span><i class="go">↗</i></div>
+        <div class="float-body"><b>Routing to<br><span id="float-agent">🍳 Chef</span></b><small>auto</small></div>
+      </div>
+      <div class="float float-right rise" style="--d:6" aria-hidden="true">
+        <div class="float-head"><span>New agent, hired in</span><i class="go">↗</i></div>
+        <div class="float-big">1 sentence</div>
+        <div class="float-bar"><i></i></div>
+      </div>
+    </header>
+
+    <section class="section split" id="demo">
+      <div class="split-copy">
+        <p class="eyebrow reveal">See it work</p>
+        <h2 class="reveal">You just type.<br>The right agent answers.</h2>
+        <p class="lede reveal">A dispatcher reads every message and hands it to the agent whose job fits. No menus, no switching bots, no commands to remember.</p>
+        <ul class="ticks reveal">
+          <li>Follow-ups stay with the same agent</li>
+          <li><code>@Name</code> reaches one agent directly</li>
+          <li>Hire a new one without leaving the chat</li>
+        </ul>
+      </div>
+      <div class="demo reveal" aria-label="Animated example of a Telegram conversation with several agents">
         <div class="demo-bar">
           <span class="demo-avatar">🛟</span>
           <div><b>PocketCrew</b><small id="demo-status">bot</small></div>
@@ -50,46 +77,42 @@
         <div class="demo-log" id="demo-log"></div>
         <div class="demo-input"><span id="demo-typed"></span><span class="caret"></span></div>
       </div>
-    </header>
-
-    <section class="strip reveal">
-      <span>No bot setup per user</span><i></i><span>No webhooks</span><i></i><span>No prompt engineering</span><i></i><span>No vector database</span>
     </section>
 
     <section class="section" id="how">
       <p class="eyebrow reveal">How it works</p>
-      <h2 class="reveal">From sign-up to first reply<br><em>in under a minute.</em></h2>
+      <h2 class="reveal">From sign-up to first reply<br>in under a minute.</h2>
       <ol class="steps">
-        <li class="reveal"><span class="num">01</span><h3>Describe an agent</h3><p>Type one sentence, like <q>a patient maths tutor for my ten-year-old</q>. Gemma writes its name, role and instructions.</p></li>
-        <li class="reveal"><span class="num">02</span><h3>Tap to connect</h3><p>One button, or one QR code. Your Telegram chat is linked to your crew. You never touch BotFather.</p></li>
-        <li class="reveal"><span class="num">03</span><h3>Just type</h3><p>A dispatcher reads each message and hands it to the agent whose job fits. No menus, no switching.</p></li>
+        <li class="glass reveal"><span class="num">01</span><h3>Describe an agent</h3><p>Type one sentence, like <q>a patient maths tutor for my ten-year-old</q>. Gemma writes its name, role and instructions.</p></li>
+        <li class="glass reveal"><span class="num">02</span><h3>Tap to connect</h3><p>One button, or one QR code. Your Telegram chat is linked to your crew. You never touch BotFather.</p></li>
+        <li class="glass reveal"><span class="num">03</span><h3>Just type</h3><p>Send a message. The dispatcher picks the agent, and the answer lands in the same chat.</p></li>
       </ol>
     </section>
 
     <section class="section" id="features">
       <p class="eyebrow reveal">Why it's different</p>
-      <h2 class="reveal">Built around the chat,<br><em>not around a dashboard.</em></h2>
+      <h2 class="reveal">Built around the chat,<br>not around a dashboard.</h2>
       <div class="bento">
-        <article class="tile wide reveal">
+        <article class="glass tile wide reveal">
           <h3>Auto-routing</h3>
-          <p>Ask about dinner and Chef answers. Ask about a stack trace and Coder steps in. Follow-ups stay with the same agent, and <code>@Name</code> reaches one directly.</p>
+          <p>Ask about dinner and Chef answers. Ask about a stack trace and Coder steps in.</p>
           <div class="route-art" aria-hidden="true">
             <span class="route-msg">“why is my build failing?”</span>
             <span class="route-line"></span>
             <span class="route-chips"><b>✨ Sidekick</b><b>🍳 Chef</b><b class="on">🧑‍💻 Coder</b></span>
           </div>
         </article>
-        <article class="tile reveal">
+        <article class="glass tile reveal">
           <h3>Hire in a sentence</h3>
           <p>On the web, or without leaving Telegram.</p>
           <pre class="mono">/hire a strict Spanish tutor</pre>
         </article>
-        <article class="tile reveal">
+        <article class="glass tile reveal">
           <h3>Teach by sending files</h3>
           <p>Drop a PDF, Markdown or text file into the chat. The agent answers from it from then on.</p>
-          <div class="file-art" aria-hidden="true"><span>📄 handbook.pdf</span><span>→</span><span>🎓</span></div>
+          <div class="file-art" aria-hidden="true"><span>handbook.pdf</span><span>→</span><span>🎓</span></div>
         </article>
-        <article class="tile wide reveal">
+        <article class="glass tile wide reveal">
           <h3>One shared memory</h3>
           <p>Tell the crew something once. Every agent knows it from then on, so you never repeat yourself.</p>
           <pre class="mono">/remember I'm vegetarian and I live in Kolkata</pre>
@@ -99,8 +122,8 @@
 
     <section class="section" id="commands">
       <p class="eyebrow reveal">In Telegram</p>
-      <h2 class="reveal">Everything is<br><em>a message away.</em></h2>
-      <dl class="cmds reveal">
+      <h2 class="reveal">Everything is<br>a message away.</h2>
+      <dl class="cmds glass reveal">
         <div><dt>any message</dt><dd>The best-suited agent answers</dd></div>
         <div><dt>@Coder …</dt><dd>Talk to one agent directly</dd></div>
         <div><dt>/agents</dt><dd>See your crew, pin one, or go back to auto</dd></div>
@@ -112,12 +135,14 @@
     </section>
 
     <section class="cta reveal">
-      <h2>Your crew is<br><em>one sentence away.</em></h2>
-      <button class="btn accent big" data-auth="signup">Hire your crew <span class="arrow">→</span></button>
+      <div class="cta-glow" aria-hidden="true"></div>
+      <h2>Your crew is<br>one sentence away.</h2>
+      <p class="lede">Free to start. Connect Telegram in one tap.</p>
+      <button class="btn accent big" data-auth="signup">Hire your crew</button>
     </section>
 
     <footer class="foot">
-      <span class="brand"><span class="buoy">🛟</span> PocketCrew</span>
+      <span class="brand">PocketCrew</span>
       <span>Open source under MIT · Self-host with Docker Compose · Powered only by Google's Gemma</span>
     </footer>
   </div>
@@ -140,7 +165,7 @@
   <!-- Dashboard (signed in) -->
   <div id="app" hidden>
     <header class="nav app-nav">
-      <span class="brand"><span class="buoy">🛟</span> PocketCrew</span>
+      <span class="brand">PocketCrew</span>
       <div class="nav-cta">
         <span id="model-pill" class="pill" title="Model status"></span>
         <span id="user-email" class="muted small hide-sm"></span>
@@ -152,10 +177,10 @@
       <section>
         <div class="section-head">
           <div>
-            <h1 class="page-title">Your <em>crew</em></h1>
+            <h1 class="page-title">Your crew</h1>
             <p class="muted">Each agent has its own job, instructions and knowledge.</p>
           </div>
-          <button id="new-agent" class="btn dark">+ Hire an agent</button>
+          <button id="new-agent" class="btn accent">+ Hire an agent</button>
         </div>
         <div id="agents" class="agents"></div>
       </section>
@@ -194,7 +219,7 @@
         <label>Describe the agent in one sentence
           <div class="row">
             <input id="draft-input" maxlength="600" placeholder="a patient maths tutor for my 10-year-old">
-            <button id="draft-btn" class="btn accent" type="button">✨ Write it for me</button>
+            <button id="draft-btn" class="btn dark" type="button">✨ Write it for me</button>
           </div>
         </label>
         <div class="chips" id="templates"></div>
@@ -214,7 +239,7 @@
         <div class="row between">
           <button id="agent-delete" class="btn ghost danger" type="button" hidden>Delete agent</button>
           <span></span>
-          <button id="agent-save" class="btn dark" type="submit">Hire</button>
+          <button id="agent-save" class="btn accent" type="submit">Hire</button>
         </div>
       </form>
     </div>
