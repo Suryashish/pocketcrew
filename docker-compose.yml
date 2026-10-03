@@ -36,12 +36,22 @@ services:
       timeout: 3s
       retries: 20
 
-  web:
+  # FastAPI. Not published: the browser reaches it through the frontend's /api proxy.
+  api:
     <<: *app
-    ports:
-      - "${PORT:-8000}:8000"
     depends_on:
       db:
+        condition: service_healthy
+
+  # Next.js dashboard and landing page.
+  web:
+    build: ./frontend
+    image: pocketcrew-web:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:3000"
+    depends_on:
+      api:
         condition: service_healthy
 
   # Long-polls Telegram, so no public URL or webhook is required.
@@ -51,7 +61,7 @@ services:
     healthcheck:
       disable: true
     depends_on:
-      web:
+      api:
         condition: service_healthy
 
   # Optional: run Gemma locally instead of Google AI Studio.

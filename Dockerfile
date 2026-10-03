@@ -14,4 +14,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Reachable only from the frontend container, so its X-Forwarded-For is trusted;
+# the login rate limit needs the real client address.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

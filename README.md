@@ -77,33 +77,48 @@ docker compose --profile local up -d   # also starts Ollama and pulls the model
 
 ### Going to production
 
-Put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of port 8000, set
+Put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of port 8000 (it should set
+`X-Forwarded-For`, which the per-address rate limits rely on), set
 `PUBLIC_URL` to your `https://` address and change `POSTGRES_PASSWORD`. Run a single `bot`
 container: Telegram allows one poller per bot token.
 
 ## How it works
 
 ```
-Browser ──► web (FastAPI + static dashboard) ──┐
-                                               ├──► Postgres
-Telegram ◄─► bot (long-polling worker) ────────┘
-                 │
-                 └──► Gemma (Google AI Studio, or Ollama)
+Browser ──► web (Next.js) ──/api──► api (FastAPI) ──┐
+                                                    ├──► Postgres
+Telegram ◄──────────────────► bot (long polling) ───┘
+                                 │
+                                 └──► Gemma (Google AI Studio, or Ollama)
 ```
 
-- `app/main.py`: REST API and dashboard
-- `app/bot.py`: Telegram worker (commands, linking, file learning)
-- `app/brain.py`: prompt assembly, dispatcher, agent drafting
-- `app/knowledge.py`: chunking and BM25 retrieval (no embeddings, no extra model)
-- `app/llm.py`: Gemma client. Gemma has no system role and needs alternating turns, so prompts are shaped for that
+The browser only talks to the Next.js app. It serves the landing page and dashboard and forwards
+`/api/*` to FastAPI, so the session cookie stays first-party and the API is never exposed directly.
+
+Backend (`app/`)
+- `main.py`: REST API
+- `bot.py`: Telegram worker (commands, linking, file learning)
+- `brain.py`: prompt assembly, dispatcher, agent drafting
+- `knowledge.py`: chunking and BM25 retrieval (no embeddings, no extra model)
+- `llm.py`: Gemma client. Gemma has no system role and needs alternating turns, so prompts are shaped for that
+
+Frontend (`frontend/`, Next.js App Router + TypeScript)
+- `app/page.tsx`, `app/dashboard/page.tsx`: the two routes
+- `app/api/[...path]/route.ts`: the gateway to FastAPI
+- `components/`: landing page, dashboard, agent editor, voice builder
+- `lib/landing.ts`: the WebGL orb and animated illustrations
 
 ## Development
 
 ```bash
+# API on :8001 (SQLite, no Docker needed)
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest                                   # runs on SQLite with a fake model
-GEMINI_API_KEY=… uvicorn app.main:app --reload
+pytest                                   # runs with a fake model
+GEMINI_API_KEY=… uvicorn app.main:app --reload --port 8001
+
+# Frontend on :3000, forwarding /api to the API above
+cd frontend && npm install && npm run dev
 ```
 
 ## License

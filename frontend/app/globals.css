@@ -6,8 +6,8 @@
   --solid: #121215; --field: rgba(255, 255, 255, .05);
   --gold: #f3c677; --gold-soft: rgba(243, 198, 119, .14); --blue: #3d6bff;
   --ok: #7be0b5; --danger: #ff8f84; --warn-bg: rgba(243, 198, 119, .12); --warn-ink: #f3c677;
-  --sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: var(--font-manrope), "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: var(--font-geist-mono), "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --ease: cubic-bezier(.2, .7, .2, 1);
 }
 
@@ -246,7 +246,7 @@ button:disabled { opacity: .55; cursor: progress; }
 .reveal.in { opacity: 1; transform: none; }
 
 /* --- dashboard ------------------------------------------------------------ */
-#app { min-height: 100vh; background: radial-gradient(70% 50% at 0% 0%, rgba(150, 135, 150, .16), transparent 70%), radial-gradient(50% 40% at 100% 100%, rgba(61, 107, 255, .1), transparent 70%); }
+.app { min-height: 100vh; background: radial-gradient(70% 50% at 0% 0%, rgba(150, 135, 150, .16), transparent 70%), radial-gradient(50% 40% at 100% 100%, rgba(61, 107, 255, .1), transparent 70%); }
 .pill { font-family: var(--mono); font-size: .74rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--ok); background: var(--glass); }
 .pill.bad { color: var(--warn-ink); background: var(--warn-bg); border-color: transparent; }
 .banner { max-width: 1100px; margin: 16px auto 0; padding: 12px 16px; border-radius: 14px; background: var(--warn-bg); color: var(--warn-ink); font-size: .92rem; width: calc(100% - 32px); border: 1px solid rgba(243, 198, 119, .25); }
@@ -340,7 +340,7 @@ dialog::backdrop { background: rgba(4, 4, 6, .65); backdrop-filter: blur(8px); -
 #voice-caption { height: 2.8em; max-width: 46ch; display: grid; place-items: center; }
 #voice-skip { transition: opacity .4s var(--ease), border-color .25s, color .25s; }
 #voice-skip.gone { opacity: 0; pointer-events: none; }
-[data-panel]:not([hidden]) { animation: panel .45s var(--ease); }
+.panel { animation: panel .45s var(--ease); }
 .emoji-field { width: 78px; } .emoji-field input { text-align: center; }
 #doc-form { display: grid; gap: 8px; }
 #doc-form input, #doc-form textarea { margin-top: 0; }

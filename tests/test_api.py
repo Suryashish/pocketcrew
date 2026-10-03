@@ -98,9 +98,9 @@ def test_telegram_not_configured(client, user):
     assert client.post("/api/telegram/link").status_code == 503
 
 
-def test_static_dashboard_served(client):
-    assert "PocketCrew" in client.get("/").text
-    assert client.get("/app.js").status_code == 200
+def test_api_only_serves_the_api(client):
+    assert client.get("/healthz").json() == {"ok": True}
+    assert client.get("/").status_code == 404  # the UI lives in the Next.js app
 
 
 def test_voice_interview_builds_and_saves_an_agent(client, user, gemma):
@@ -126,3 +126,13 @@ def test_voice_interview_needs_a_real_first_answer_and_reports_model_failure(cli
     failed = client.post("/api/agents/interview", json={"answers": [{"question": "q", "answer": "a tutor"}]})
     assert failed.status_code == 503
     assert len(client.get("/api/agents").json()) == 1  # nothing half-created
+
+
+def test_login_attempts_are_limited_per_account(client, user):
+    client.post("/api/auth/logout")
+    wrong = {"email": "ada@example.com", "password": "wrong password"}
+    assert [client.post("/api/auth/login", json=wrong).status_code for _ in range(10)] == [401] * 10
+    assert client.post("/api/auth/login", json=wrong).status_code == 429
+    # even the right password waits out the window, but other accounts are unaffected
+    assert client.post("/api/auth/login", json={"email": "ada@example.com", "password": "correct horse"}).status_code == 429
+    assert client.post("/api/auth/login", json={"email": "bob@example.com", "password": "whatever1"}).status_code == 401

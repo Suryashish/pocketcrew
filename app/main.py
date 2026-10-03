@@ -1,4 +1,4 @@
-"""PocketCrew web API and dashboard."""
+"""PocketCrew API. The dashboard is the Next.js app in frontend/, which proxies /api here."""
 import logging
 import re
 import secrets
@@ -7,14 +7,12 @@ import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from pathlib import Path
 
 import httpx
 import segno
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -56,9 +54,8 @@ _attempts: dict[str, deque] = defaultdict(deque)
 _attempts_lock = threading.Lock()
 
 
-def throttle(request: Request, limit: int = 10, window: int = 300) -> None:
-    """Small in-memory brake on password guessing and signup floods."""
-    key = request.client.host if request.client else "unknown"
+def throttle(key: str, limit: int, window: int = 300) -> None:
+    """Small in-memory brake: at most `limit` attempts per `window` seconds for `key`."""
     with _attempts_lock:
         q = _attempts[key]
         cutoff = time.time() - window
@@ -67,6 +64,13 @@ def throttle(request: Request, limit: int = 10, window: int = 300) -> None:
         if len(q) >= limit:
             raise HTTPException(429, "Too many attempts. Please wait a few minutes.")
         q.append(time.time())
+
+
+def client_ip(request: Request) -> str:
+    # Behind the Next.js gateway this is only a real visitor address when a
+    # reverse proxy in front sets X-Forwarded-For; otherwise everyone shares
+    # one address, which is why the per-address limits below are loose.
+    return request.client.host if request.client else "unknown"
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -178,7 +182,7 @@ def status():
 def signup(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
     if not settings.allow_signups:
         raise HTTPException(403, "Signups are closed on this server.")
-    throttle(request)
+    throttle(f"signup:{client_ip(request)}", limit=30)
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
         raise HTTPException(422, "That doesn't look like an email address.")
@@ -198,8 +202,11 @@ def signup(body: Credentials, request: Request, response: Response, db: Session 
 
 @app.post("/api/auth/login")
 def login(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
-    throttle(request)
-    user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
+    email = body.email.strip().lower()
+    # Per account, so guessing one password is slow whatever address it comes from.
+    throttle(f"login:{email}", limit=10)
+    throttle(f"login-ip:{client_ip(request)}", limit=120)
+    user = db.scalar(select(User).where(User.email == email))
     if not user or not security.verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Wrong email or password.")
     set_session(response, user)
@@ -432,6 +439,3 @@ def telegram_unlink(link_id: int, user: User = Depends(current_user), db: Sessio
     db.delete(link)
     db.commit()
     return {"ok": True}
-
-
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")

@@ -6,3 +6,10 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 testuser.md
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+
+frontend/node_modules/
